@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>หลังบ้าน · จัดการงาน</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f4f1;--line:#e2e2dc;--text:#1f1f1d;--sub:#6b6b66;--acc:#185FA5}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Sarabun",system-ui,sans-serif;background:var(--bg);color:var(--text)}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}
+h1{margin:0;font-size:20px;font-weight:500}
+h2{font-size:16px;font-weight:500;margin:0 0 10px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+input,select,button{font:inherit;font-size:14px;height:34px;border:1px solid #c9c9c2;border-radius:8px;padding:0 10px;background:#fff;color:var(--text)}
+button{cursor:pointer}button:hover{background:#f0f0ec}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff}button.pri:hover{background:#124a82}
+input[type=color]{padding:2px;width:44px}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tabs button.on{background:#1f1f1d;color:#fff;border-color:#1f1f1d}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:12px;font-weight:500;color:var(--sub);padding:6px}
+td{padding:5px 4px;border-top:1px solid var(--line);vertical-align:middle;font-size:14px}
+td input,td select{width:100%}
+.ib{border:none;background:transparent;height:30px;padding:0 8px;color:#a32d2d}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#1f1f1d;color:#fff;padding:8px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
+#toast.show{opacity:1}#toast.bad{background:#a32d2d}
+.login{max-width:340px;margin:12vh auto}
+.login input{width:100%;margin-bottom:10px}
+.muted{color:var(--sub);font-size:13px}
+.tw{overflow-x:auto}
+.tw table{min-width:720px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div id="loginBox" class="login card" style="display:none">
+ <h1 style="margin-bottom:12px">เข้าสู่ระบบหลังบ้าน</h1>
+ <form id="loginForm">
+  <input name="email" type="email" placeholder="อีเมล" required autocomplete="username">
+  <input name="password" type="password" placeholder="รหัสผ่าน" required autocomplete="current-password">
+  <button class="pri" style="width:100%" type="submit">เข้าสู่ระบบ</button>
+  <p class="muted" id="loginErr" style="color:#a32d2d"></p>
+ </form>
+</div>
+
+<div id="app" style="display:none">
+ <div class="top">
+  <h1>หลังบ้าน · จัดการงาน</h1>
+  <div class="row"><a href="index.html" target="_blank" class="muted">เปิดหน้าบอร์ด</a><button id="logout" type="button">ออกจากระบบ</button></div>
+ </div>
+ <div class="tabs">
+  <button type="button" data-t="tJobs" class="on">งาน</button>
+  <button type="button" data-t="tStatus">สถานะ</button>
+  <button type="button" data-t="tHist">ประวัติการแก้ไข</button>
+ </div>
+
+ <div id="tJobs">
+  <div class="card">
+   <h2>เพิ่ม Job</h2>
+   <form id="addJob" class="row">
+    <input name="jname" placeholder="ชื่อ Job" required style="flex:2;min-width:140px">
+    <input name="jno" placeholder="เลข Job เช่น 149/26" style="flex:1;min-width:110px">
+    <input name="jdate" type="date" title="วันที่เอาของ">
+    <select name="jstatus" id="addStatus" style="min-width:150px"></select>
+    <input name="jnote" placeholder="หมายเหตุ (ถ้ามี)" style="flex:2;min-width:140px">
+    <button class="pri" type="submit">เพิ่ม</button>
+   </form>
+  </div>
+  <div class="card">
+   <div class="row" style="margin-bottom:10px">
+    <input id="q" placeholder="ค้นหาชื่อ/เลข Job" style="flex:1;min-width:150px">
+    <select id="fs"></select>
+    <label class="muted row" style="gap:6px"><input type="checkbox" id="hideDone" checked style="height:auto"> ซ่อนงานที่เสร็จแล้ว</label>
+   </div>
+   <div class="tw"><table>
+    <thead><tr><th style="width:22%">ชื่อ Job</th><th style="width:15%">เลข Job</th><th style="width:15%">วันที่เอาของ</th><th style="width:20%">สถานะ</th><th>หมายเหตุ</th><th style="width:44px"></th></tr></thead>
+    <tbody id="jobBody"></tbody>
+   </table></div>
+   <p class="muted" id="jobCount"></p>
+  </div>
+ </div>
+
+ <div id="tStatus" style="display:none">
+  <div class="card">
+   <h2>เพิ่มสถานะ (ช่องบนบอร์ด)</h2>
+   <form id="addStatusForm" class="row">
+    <input name="sname" placeholder="ชื่อสถานะ" required style="flex:1;min-width:160px">
+    <input name="scolor" type="color" value="#185FA5" title="สี">
+    <input name="sorder" type="number" placeholder="ลำดับ" style="width:90px">
+    <button class="pri" type="submit">เพิ่ม</button>
+   </form>
+  </div>
+  <div class="card">
+   <p class="muted" style="margin-top:0">ลำดับเลขน้อยอยู่ซ้ายบนก่อน แก้ชื่อ/สี/ลำดับได้เลย บันทึกอัตโนมัติ</p>
+   <div class="tw"><table>
+    <thead><tr><th>ชื่อ</th><th style="width:70px">สี</th><th style="width:100px">ลำดับ</th><th style="width:44px"></th></tr></thead>
+    <tbody id="stBody"></tbody>
+   </table></div>
+  </div>
+ </div>
+
+ <div id="tHist" style="display:none">
+  <div class="card">
+   <div class="row" style="justify-content:space-between;margin-bottom:8px"><h2 style="margin:0">ประวัติล่าสุด 200 รายการ</h2><button id="reloadHist" type="button">รีเฟรช</button></div>
+   <div class="tw"><table>
+    <thead><tr><th style="width:140px">เวลา</th><th style="width:70px">การกระทำ</th><th>Job</th><th>เลข Job</th><th>สถานะ</th></tr></thead>
+    <tbody id="hBody"></tbody>
+   </table></div>
+  </div>
+ </div>
+</div>
+</div>
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script>
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let statuses = [], jobs = [], toastT;
+
+function toast(t, bad){
+  const el = $('toast');
+  el.textContent = t; el.className = 'show' + (bad ? ' bad' : '');
+  clearTimeout(toastT); toastT = setTimeout(() => { el.className = ''; }, bad ? 4000 : 1600);
+}
+
+function showLogin(){ $('loginBox').style.display = ''; $('app').style.display = 'none'; }
+function showApp(){ $('loginBox').style.display = 'none'; $('app').style.display = ''; loadAll(); }
+db.auth.getSession().then(r => { r.data.session ? showApp() : showLogin(); });
+db.auth.onAuthStateChange((ev, session) => { if(ev === 'SIGNED_OUT') showLogin(); });
+
+$('loginForm').onsubmit = async e => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  $('loginErr').textContent = '';
+  const r = await db.auth.signInWithPassword({email: f.get('email'), password: f.get('password')});
+  if(r.error){ $('loginErr').textContent = 'เข้าสู่ระบบไม่สำเร็จ ตรวจสอบอีเมลและรหัสผ่านอีกครั้ง'; return; }
+  showApp();
+};
+$('logout').onclick = async () => { await db.auth.signOut(); showLogin(); };
+
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+  ['tJobs', 'tStatus', 'tHist'].forEach(id => { $(id).style.display = id === b.dataset.t ? '' : 'none'; });
+  if(b.dataset.t === 'tHist') loadHist();
+});
+
+async function loadAll(){
+  const [s, j] = await Promise.all([
+    db.from('statuses').select('*').order('sort_order'),
+    db.from('jobs').select('*').order('pickup_date', {ascending: true, nullsFirst: false})
+  ]);
+  const e = s.error || j.error;
+  if(e){ toast('โหลดข้อมูลไม่สำเร็จ: ' + e.message, true); return; }
+  statuses = s.data; jobs = j.data;
+  renderFilters(); renderJobs(); renderStatuses();
+}
+
+function statusOpts(sel, withNone){
+  return (withNone ? '<option value="">- ไม่ระบุ -</option>' : '') + statuses.map(s => '<option value="' + s.id + '"' + (s.id === sel ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('');
+}
+function renderFilters(){
+  const cur = $('fs').value;
+  $('fs').innerHTML = '<option value="">ทุกสถานะ</option>' + statuses.map(s => '<option value="' + s.id + '">' + esc(s.name) + '</option>').join('');
+  $('fs').value = cur;
+  $('addStatus').innerHTML = statusOpts(statuses[0] && statuses[0].id, true);
+}
+
+function renderJobs(){
+  const q = $('q').value.trim().toLowerCase(), fs = $('fs').value, hide = $('hideDone').checked;
+  const doneIds = statuses.filter(s => s.name === 'เสร็จแล้ว').map(s => s.id);
+  const list = jobs.filter(j =>
+    (!fs || String(j.status_id) === fs) &&
+    (!hide || fs || !doneIds.includes(j.status_id)) &&
+    (!q || (j.name + ' ' + (j.job_no || '')).toLowerCase().includes(q)));
+  $('jobBody').innerHTML = list.map(j => '<tr data-id="' + j.id + '">' +
+    '<td><input data-f="name" value="' + esc(j.name) + '"></td>' +
+    '<td><input data-f="job_no" value="' + esc(j.job_no) + '"></td>' +
+    '<td><input data-f="pickup_date" type="date" value="' + esc(j.pickup_date) + '"></td>' +
+    '<td><select data-f="status_id">' + statusOpts(j.status_id, true) + '</select></td>' +
+    '<td><input data-f="note" value="' + esc(j.note) + '"></td>' +
+    '<td><button class="ib" type="button" data-del="1" title="ลบ">ลบ</button></td></tr>').join('');
+  $('jobCount').textContent = 'แสดง ' + list.length + ' จาก ' + jobs.length + ' งาน';
+}
+$('q').oninput = renderJobs; $('fs').onchange = renderJobs; $('hideDone').onchange = renderJobs;
+
+$('jobBody').addEventListener('change', async e => {
+  const el = e.target, tr = el.closest('tr'), f = el.dataset.f;
+  if(!tr || !f) return;
+  let v = el.value.trim();
+  if(f === 'name' && !v){ toast('ชื่อ Job ห้ามว่าง', true); renderJobs(); return; }
+  if(f === 'status_id') v = v ? +v : null; else if(f !== 'name') v = v || null;
+  const r = await db.from('jobs').update({[f]: v}).eq('id', +tr.dataset.id);
+  if(r.error){ toast('บันทึกไม่สำเร็จ: ' + r.error.message, true); return; }
+  const j = jobs.find(x => x.id === +tr.dataset.id); if(j) j[f] = v;
+  toast('บันทึกแล้ว');
+});
+$('jobBody').addEventListener('click', async e => {
+  const b = e.target.closest('[data-del]'); if(!b) return;
+  const tr = b.closest('tr'), j = jobs.find(x => x.id === +tr.dataset.id);
+  if(!confirm('ลบ Job "' + j.name + (j.job_no ? ' ' + j.job_no : '') + '" ใช่ไหม? (ประวัติยังเก็บไว้)')) return;
+  const r = await db.from('jobs').delete().eq('id', j.id);
+  if(r.error){ toast('ลบไม่สำเร็จ: ' + r.error.message, true); return; }
+  jobs = jobs.filter(x => x.id !== j.id); renderJobs(); toast('ลบแล้ว');
+});
+
+$('addJob').onsubmit = async e => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const row = {
+    name: f.get('jname').trim(), job_no: f.get('jno').trim() || null, pickup_date: f.get('jdate') || null,
+    status_id: f.get('jstatus') ? +f.get('jstatus') : null, note: f.get('jnote').trim() || null
+  };
+  const r = await db.from('jobs').insert(row);
+  if(r.error){ toast('เพิ่มไม่สำเร็จ: ' + r.error.message, true); return; }
+  e.target.reset(); renderFilters(); toast('เพิ่ม Job แล้ว'); loadAll();
+};
+
+function renderStatuses(){
+  $('stBody').innerHTML = statuses.map(s => '<tr data-id="' + s.id + '">' +
+    '<td><input data-f="name" value="' + esc(s.name) + '"></td>' +
+    '<td><input data-f="color" type="color" value="' + esc(s.color) + '"></td>' +
+    '<td><input data-f="sort_order" type="number" value="' + s.sort_order + '"></td>' +
+    '<td><button class="ib" type="button" data-del="1">ลบ</button></td></tr>').join('');
+}
+$('stBody').addEventListener('change', async e => {
+  const el = e.target, tr = el.closest('tr'), f = el.dataset.f; if(!tr || !f) return;
+  let v = el.value.trim();
+  if(f === 'name' && !v){ toast('ชื่อสถานะห้ามว่าง', true); renderStatuses(); return; }
+  if(f === 'sort_order') v = +v || 0;
+  const r = await db.from('statuses').update({[f]: v}).eq('id', +tr.dataset.id);
+  if(r.error){ toast('บันทึกไม่สำเร็จ: ' + r.error.message, true); return; }
+  toast('บันทึกแล้ว');
+  if(f !== 'color') loadAll();
+});
+$('stBody').addEventListener('click', async e => {
+  const b = e.target.closest('[data-del]'); if(!b) return;
+  const s = statuses.find(x => x.id === +b.closest('tr').dataset.id);
+  const n = jobs.filter(j => j.status_id === s.id).length;
+  if(!confirm('ลบสถานะ "' + s.name + '" ใช่ไหม?' + (n ? '\nมี ' + n + ' งานในสถานะนี้ จะกลายเป็น "ไม่ระบุสถานะ"' : ''))) return;
+  const r = await db.from('statuses').delete().eq('id', s.id);
+  if(r.error){ toast('ลบไม่สำเร็จ: ' + r.error.message, true); return; }
+  toast('ลบแล้ว'); loadAll();
+});
+$('addStatusForm').onsubmit = async e => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const max = statuses.filter(s => s.sort_order < 99).reduce((m, s) => Math.max(m, s.sort_order), 0);
+  const r = await db.from('statuses').insert({name: f.get('sname').trim(), color: f.get('scolor'), sort_order: f.get('sorder') === '' ? max + 1 : +f.get('sorder')});
+  if(r.error){ toast('เพิ่มไม่สำเร็จ: ' + r.error.message, true); return; }
+  e.target.reset(); toast('เพิ่มสถานะแล้ว'); loadAll();
+};
+
+async function loadHist(){
+  const r = await db.from('job_history').select('*').order('changed_at', {ascending: false}).order('id', {ascending: false}).limit(200);
+  if(r.error){ toast('โหลดประวัติไม่สำเร็จ: ' + r.error.message, true); return; }
+  const act = {insert: 'เพิ่ม', update: 'แก้ไข', delete: 'ลบ'};
+  $('hBody').innerHTML = r.data.map(h => '<tr><td>' + new Date(h.changed_at).toLocaleString('th-TH', {dateStyle: 'short', timeStyle: 'short'}) + '</td><td>' + (act[h.action] || h.action) + '</td><td>' + esc(h.job_name) + '</td><td>' + esc(h.job_no) + '</td><td>' + esc(h.status_name || '-') + '</td></tr>').join('');
+}
+$('reloadHist').onclick = loadHist;
+</script>
+</body>
+</html>

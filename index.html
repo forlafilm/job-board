@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>บอร์ดติดตามงาน</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f4f1;--card:#fff;--line:#e2e2dc;--text:#1f1f1d;--sub:#6b6b66;--acc:#185FA5}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Sarabun",system-ui,sans-serif;background:var(--bg);color:var(--text);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.wrap{max-width:1200px;margin:0 auto;padding:16px}
+.top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+h1{margin:0;font-size:22px;font-weight:500}
+.sub{margin:2px 0 0;font-size:13px;color:var(--sub)}
+.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:14px}
+button,input[type=date]{font:inherit;font-size:14px;height:34px;padding:0 12px;border:1px solid #c9c9c2;border-radius:8px;background:#fff;color:var(--text);cursor:pointer}
+button:hover{background:#f0f0ec}
+label.chk{display:flex;gap:6px;align-items:center;color:var(--sub);cursor:pointer}
+.banner{background:#fff4d6;border:1px solid #efd58a;color:#6a4b00;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:14px;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.cell{height:260px;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.hd{background:var(--c);color:#fff;padding:9px 12px;display:flex;justify-content:space-between;gap:8px;align-items:center;font-weight:500;font-size:14px;line-height:1.25;min-height:42px}
+.cnt{font-size:12px;background:rgba(255,255,255,.28);border-radius:10px;padding:1px 8px;white-space:nowrap}
+.it{padding:6px 12px;border-top:1px solid var(--line);font-size:13px;line-height:1.35}
+.it:first-child{border-top:none}
+.it small{display:block;color:var(--sub);font-size:12px}
+.extra{display:none}
+.more{margin-top:auto;border:none;border-top:1px solid var(--line);border-radius:0;width:100%;height:34px;color:var(--acc);background:#fff}
+.empty{padding:14px 12px;color:#aaa9a2;font-size:13px}
+#panel .cell{height:auto;margin-top:12px}
+#panel .list{columns:3 260px;column-gap:0}
+#panel .it{break-inside:avoid;border-top:1px solid var(--line)}
+.err{background:#fde8e8;color:#8a1f1f;padding:10px 12px;border-radius:8px;margin-bottom:12px;font-size:14px}
+@media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.grid{grid-template-columns:1fr}}
+@page{size:A4 landscape;margin:10mm}
+@media print{
+ body{background:#fff}.wrap{max-width:none;padding:0}
+ .tools,.more,#panel,.banner button{display:none!important}
+ .grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+ .cell{height:auto;break-inside:avoid}
+ .extra{display:block!important}
+ .it{font-size:11px;padding:4px 8px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+ <div class="top">
+  <div><h1>บอร์ดติดตามงาน</h1><p class="sub" id="upd">กำลังโหลด…</p></div>
+  <div class="tools">
+   <label class="chk"><input type="checkbox" id="done"> แสดงงานที่เสร็จแล้ว</label>
+   <label class="chk">ดูย้อนหลัง ณ วันที่ <input type="date" id="asof"></label>
+   <button id="reload" type="button">รีเฟรช</button>
+   <button id="print" type="button">ปริ้น</button>
+  </div>
+ </div>
+ <div id="msg"></div>
+ <div id="banner"></div>
+ <div class="grid" id="grid"></div>
+ <div id="panel"></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script>
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let statuses = [], jobs = [], snap = null, asOf = '', cols = [];
+
+function fmt(d){
+  if(!d) return '-';
+  const p = d.split('-');
+  return p[2] + '/' + p[1] + '/' + String((+p[0] + 543) % 100).padStart(2, '0');
+}
+function fmtDT(iso){
+  const d = new Date(iso);
+  const p = n => String(n).padStart(2, '0');
+  return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + String((d.getFullYear() + 543) % 100).padStart(2, '0') + ' · ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ' น.';
+}
+function showErr(t){ $('msg').innerHTML = t ? '<div class="err">' + esc(t) + '</div>' : ''; }
+
+async function load(){
+  showErr('');
+  const [s, j, h] = await Promise.all([
+    db.from('statuses').select('*').order('sort_order'),
+    db.from('jobs').select('*').order('pickup_date', {ascending: true, nullsFirst: false}),
+    db.from('job_history').select('changed_at').order('changed_at', {ascending: false}).limit(1)
+  ]);
+  const e = s.error || j.error || h.error;
+  if(e){ showErr('โหลดข้อมูลไม่สำเร็จ: ' + e.message); $('upd').textContent = ''; return; }
+  statuses = s.data; jobs = j.data;
+  $('upd').textContent = h.data.length ? 'อัพเดตล่าสุด ' + fmtDT(h.data[0].changed_at) : 'ยังไม่มีข้อมูล';
+  if(asOf) await loadSnapshot(); else render();
+}
+
+async function loadSnapshot(){
+  const end = new Date(asOf + 'T23:59:59').toISOString();
+  let rows = [], from = 0;
+  while(true){
+    const r = await db.from('job_history').select('*').lte('changed_at', end).order('changed_at', {ascending: true}).order('id', {ascending: true}).range(from, from + 999);
+    if(r.error){ showErr('โหลดข้อมูลย้อนหลังไม่สำเร็จ: ' + r.error.message); return; }
+    rows = rows.concat(r.data);
+    if(r.data.length < 1000) break;
+    from += 1000;
+  }
+  const m = new Map();
+  rows.forEach(r => m.set(r.job_id, r));
+  snap = [...m.values()].filter(r => r.action !== 'delete').map(r => ({
+    id: r.job_id, name: r.job_name, job_no: r.job_no, pickup_date: r.pickup_date, note: r.note,
+    status_id: statuses.some(s => s.id === r.status_id) ? r.status_id : null
+  }));
+  render();
+}
+
+function itemHtml(j, extra){
+  const sub = 'เอาของ ' + fmt(j.pickup_date) + (j.note ? ' · ' + esc(j.note) : '');
+  return '<div class="it' + (extra ? ' extra' : '') + '"><b style="font-weight:500">' + esc(j.name) + '</b>' + (j.job_no ? ' Job.' + esc(j.job_no) : '') + '<small>' + sub + '</small></div>';
+}
+
+function render(){
+  const list = asOf ? (snap || []) : jobs;
+  const by = new Map();
+  list.forEach(j => { const k = j.status_id == null ? 'none' : j.status_id; if(!by.has(k)) by.set(k, []); by.get(k).push(j); });
+  by.forEach(v => v.sort((a, b) => (a.pickup_date || '9999').localeCompare(b.pickup_date || '9999')));
+  const showDone = $('done').checked;
+  cols = statuses.filter(s => showDone || s.name !== 'เสร็จแล้ว').map(s => ({id: String(s.id), name: s.name, color: s.color, items: by.get(s.id) || []}));
+  if(by.has('none')) cols.push({id: 'none', name: 'ไม่ระบุสถานะ', color: '#888780', items: by.get('none')});
+  $('grid').innerHTML = cols.map(c => {
+    const body = c.items.length ? c.items.map((j, i) => itemHtml(j, i >= 4)).join('') : '<div class="empty">ไม่มีงาน</div>';
+    const more = c.items.length > 4 ? '<button class="more" type="button" data-id="' + c.id + '">ดูเพิ่มอีก ' + (c.items.length - 4) + ' งาน</button>' : '';
+    return '<div class="cell" style="--c:' + esc(c.color) + '"><div class="hd"><span>' + esc(c.name) + '</span><span class="cnt">' + c.items.length + '</span></div>' + body + more + '</div>';
+  }).join('');
+  $('banner').innerHTML = asOf ? '<div class="banner"><span>กำลังดูข้อมูลย้อนหลัง ณ สิ้นวันที่ ' + fmt(asOf) + '</span><button type="button" id="back">กลับไปฉบับล่าสุด</button></div>' : '';
+  if($('back')) $('back').onclick = () => { asOf = ''; snap = null; $('asof').value = ''; render(); };
+  $('panel').innerHTML = '';
+}
+
+$('grid').addEventListener('click', e => {
+  const b = e.target.closest('.more');
+  if(!b) return;
+  const c = cols.find(x => x.id === b.dataset.id);
+  if(!c) return;
+  $('panel').innerHTML = '<div class="cell" style="--c:' + esc(c.color) + '"><div class="hd"><span>' + esc(c.name) + ' · ทั้งหมด ' + c.items.length + ' งาน</span><button type="button" id="closep" style="height:28px;font-size:13px">ปิด</button></div><div class="list">' + c.items.map(j => itemHtml(j, false)).join('') + '</div></div>';
+  $('closep').onclick = () => { $('panel').innerHTML = ''; };
+  $('panel').scrollIntoView({behavior: 'smooth', block: 'nearest'});
+});
+$('done').onchange = render;
+$('reload').onclick = load;
+$('print').onclick = () => window.print();
+$('asof').onchange = async e => { asOf = e.target.value; if(asOf) await loadSnapshot(); else { snap = null; render(); } };
+load();
+</script>
+</body>
+</html>
