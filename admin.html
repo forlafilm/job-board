@@ -6,10 +6,11 @@
 <meta name="robots" content="noindex">
 <title>หลังบ้าน · จัดการงาน</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400..700&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#f4f4f1;--line:#e2e2dc;--text:#1f1f1d;--sub:#6b6b66;--acc:#185FA5}
 *{box-sizing:border-box}
-body{margin:0;font-family:"Sarabun",system-ui,sans-serif;background:var(--bg);color:var(--text)}
+body{margin:0;font-family:"Google Sans Flex","Google Sans","Sarabun",system-ui,sans-serif;background:var(--bg);color:var(--text)}
 .wrap{max-width:1100px;margin:0 auto;padding:16px}
 h1{margin:0;font-size:20px;font-weight:500}
 h2{font-size:16px;font-weight:500;margin:0 0 10px}
@@ -27,6 +28,7 @@ th{text-align:left;font-size:12px;font-weight:500;color:var(--sub);padding:6px}
 td{padding:5px 4px;border-top:1px solid var(--line);vertical-align:middle;font-size:14px}
 td input,td select{width:100%}
 .ib{border:none;background:transparent;height:30px;padding:0 8px;color:#a32d2d}
+.ib.ok{color:#2e7d32;border:1px solid #2e7d32;margin-right:4px}.ib.ok:hover{background:#e8f5e9}
 #toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#1f1f1d;color:#fff;padding:8px 16px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
 #toast.show{opacity:1}#toast.bad{background:#a32d2d}
 .login{max-width:340px;margin:12vh auto}
@@ -79,7 +81,7 @@ td input,td select{width:100%}
     <label class="muted row" style="gap:6px"><input type="checkbox" id="hideDone" checked style="height:auto"> ซ่อนงานที่เสร็จแล้ว</label>
    </div>
    <div class="tw"><table>
-    <thead><tr><th style="width:22%">ชื่อ Job</th><th style="width:15%">เลข Job</th><th style="width:15%">วันที่เอาของ</th><th style="width:20%">สถานะ</th><th>หมายเหตุ</th><th style="width:44px"></th></tr></thead>
+    <thead><tr><th style="width:22%">ชื่อ Job</th><th style="width:15%">เลข Job</th><th style="width:15%">วันที่เอาของ</th><th style="width:20%">สถานะ</th><th>หมายเหตุ</th><th style="width:120px"></th></tr></thead>
     <tbody id="jobBody"></tbody>
    </table></div>
    <p class="muted" id="jobCount"></p>
@@ -179,7 +181,7 @@ function renderJobs(){
   const doneIds = statuses.filter(s => s.name === 'เสร็จแล้ว').map(s => s.id);
   const list = jobs.filter(j =>
     (!fs || String(j.status_id) === fs) &&
-    (!hide || fs || !doneIds.includes(j.status_id)) &&
+    (!hide || fs || q || !doneIds.includes(j.status_id)) &&
     (!q || (j.name + ' ' + (j.job_no || '')).toLowerCase().includes(q)));
   $('jobBody').innerHTML = list.map(j => '<tr data-id="' + j.id + '">' +
     '<td><input data-f="name" value="' + esc(j.name) + '"></td>' +
@@ -187,7 +189,7 @@ function renderJobs(){
     '<td><input data-f="pickup_date" type="date" value="' + esc(j.pickup_date) + '"></td>' +
     '<td><select data-f="status_id">' + statusOpts(j.status_id, true) + '</select></td>' +
     '<td><input data-f="note" value="' + esc(j.note) + '"></td>' +
-    '<td><button class="ib" type="button" data-del="1" title="ลบ">ลบ</button></td></tr>').join('');
+    '<td style="white-space:nowrap">' + (doneIds.includes(j.status_id) ? '' : '<button class="ib ok" type="button" data-done="1" title="ทำเครื่องหมายว่างานเสร็จแล้ว">✓ เสร็จ</button>') + '<button class="ib" type="button" data-del="1" title="ลบ">ลบ</button></td></tr>').join('');
   $('jobCount').textContent = 'แสดง ' + list.length + ' จาก ' + jobs.length + ' งาน';
 }
 $('q').oninput = renderJobs; $('fs').onchange = renderJobs; $('hideDone').onchange = renderJobs;
@@ -202,6 +204,21 @@ $('jobBody').addEventListener('change', async e => {
   if(r.error){ toast('บันทึกไม่สำเร็จ: ' + r.error.message, true); return; }
   const j = jobs.find(x => x.id === +tr.dataset.id); if(j) j[f] = v;
   toast('บันทึกแล้ว');
+});
+$('jobBody').addEventListener('click', async e => {
+  const d = e.target.closest('[data-done]');
+  if(!d) return;
+  const j = jobs.find(x => x.id === +d.closest('tr').dataset.id);
+  if(!j) return;
+  let ds = statuses.find(s => s.name === 'เสร็จแล้ว');
+  if(!ds){
+    const c = await db.from('statuses').insert({name: 'เสร็จแล้ว', color: '#444441', sort_order: 99}).select().single();
+    if(c.error){ toast('สร้างสถานะ "เสร็จแล้ว" ไม่สำเร็จ: ' + c.error.message, true); return; }
+    ds = c.data; statuses.push(ds); renderFilters();
+  }
+  const r = await db.from('jobs').update({status_id: ds.id}).eq('id', j.id);
+  if(r.error){ toast('บันทึกไม่สำเร็จ: ' + r.error.message, true); return; }
+  j.status_id = ds.id; renderJobs(); toast('ทำเครื่องหมายเสร็จแล้ว: ' + j.name);
 });
 $('jobBody').addEventListener('click', async e => {
   const b = e.target.closest('[data-del]'); if(!b) return;
