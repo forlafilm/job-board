@@ -48,6 +48,11 @@ label.chk{display:flex;gap:.4rem;align-items:center;color:var(--sub);cursor:poin
 .it small{display:block;color:var(--sub);font-size:.78rem}
 .late{color:var(--late);font-weight:500}
 .empty{padding:.9rem .75rem;color:var(--sub);opacity:.7;font-size:.85rem}
+details.dn{margin-top:1rem;background:var(--card);border:1px solid var(--line);border-radius:.75rem;overflow:hidden}
+details.dn summary{cursor:pointer;padding:.7rem .9rem;font-weight:500;font-size:.95rem}
+details.dn .note{margin:0;padding:0 .9rem .6rem;color:var(--sub);font-size:.8rem}
+.dl{display:grid;grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));border-top:1px solid var(--line)}
+.dl .it{border-top:none;border-bottom:1px solid var(--line)}
 .err{background:#fde8e8;color:#8a1f1f;padding:.6rem .75rem;border-radius:.5rem;margin-bottom:.75rem;font-size:.9rem}
 @media(max-width:520px){.grid{grid-template-columns:1fr}input[type=search]{width:100%}.tools{width:100%}}
 @page{size:A4 landscape;margin:10mm}
@@ -55,7 +60,7 @@ label.chk{display:flex;gap:.4rem;align-items:center;color:var(--sub);cursor:poin
  html{font-size:12px!important}
  :root,:root[data-theme=dark]{--bg:#fff;--card:#fff;--line:#d9d9d2;--text:#1f1f1d;--sub:#55554f;--late:#c62828}
  body{background:#fff}.wrap{max-width:none;padding:0}
- .tools,.info{display:none!important}
+ .tools,.info,details.dn{display:none!important}
  .grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
  .cell{min-height:0;break-inside:avoid}
 }
@@ -67,7 +72,6 @@ label.chk{display:flex;gap:.4rem;align-items:center;color:var(--sub);cursor:poin
   <div><h1>บอร์ดติดตามงาน</h1><p class="sub" id="upd">กำลังโหลด…</p></div>
   <div class="tools">
    <input type="search" id="q" placeholder="ค้นหาชื่อ Job / เลข Job" aria-label="ค้นหางาน">
-   <label class="chk"><input type="checkbox" id="done"> แสดงงานที่เสร็จแล้ว</label>
    <div class="grp" role="group" aria-label="ขนาดตัวอักษร">
     <button id="fsm" type="button" aria-label="ลดขนาดตัวอักษร">A−</button>
     <button id="fsp" type="button" aria-label="เพิ่มขนาดตัวอักษร">A+</button>
@@ -80,6 +84,11 @@ label.chk{display:flex;gap:.4rem;align-items:center;color:var(--sub);cursor:poin
  <div id="msg"></div>
  <p class="info" id="info"></p>
  <div class="grid" id="grid"></div>
+ <details class="dn" id="doneBox" style="display:none">
+  <summary id="doneSum"></summary>
+  <p class="note">แสดงงานที่เสร็จภายใน 30 วันล่าสุด งานที่เก่ากว่านั้นค้นหาได้จากช่องค้นหาด้านบน</p>
+  <div class="dl" id="doneList"></div>
+ </details>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
@@ -88,6 +97,7 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const DONE = 'เสร็จแล้ว';
+const DONE_DAYS = 30;
 const store = {
   set(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
 };
@@ -146,16 +156,24 @@ function itemHtml(j, late){
     '<small>เอาของ ' + d + (j.note ? ' · ' + esc(j.note) : '') + '</small></div>';
 }
 
+function fmtLocal(iso){
+  const d = new Date(iso), p = n => String(n).padStart(2, '0');
+  return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + String((d.getFullYear() + 543) % 100).padStart(2, '0');
+}
+function doneItemHtml(j){
+  return '<div class="it"><b>' + esc(j.name) + '</b>' + (j.job_no ? ' Job.' + esc(j.job_no) : '') +
+    '<small>เอาของ ' + fmt(j.pickup_date) + ' · เสร็จ ' + fmtLocal(j.done_at) + (j.note ? ' · ' + esc(j.note) : '') + '</small></div>';
+}
+
 function render(){
   const q = $('q').value.trim().toLowerCase();
-  const showDone = $('done').checked;
   const today = todayStr();
   const list = q ? jobs.filter(j => ((j.name || '') + ' ' + (j.job_no || '') + ' ' + (j.note || '')).toLowerCase().includes(q)) : jobs;
   const by = new Map();
   list.forEach(j => { const k = j.status_id == null ? 'none' : j.status_id; if(!by.has(k)) by.set(k, []); by.get(k).push(j); });
   by.forEach(v => v.sort((a, b) => (a.pickup_date || '9999').localeCompare(b.pickup_date || '9999')));
   let cols = statuses
-    .filter(s => q || showDone || s.name !== DONE)
+    .filter(s => q || s.name !== DONE)
     .map(s => ({name: s.name, color: s.color, done: s.name === DONE, items: by.get(s.id) || []}));
   if(by.has('none')) cols.push({name: 'ไม่ระบุสถานะ', color: '#888780', done: false, items: by.get('none')});
   if(q) cols = cols.filter(c => c.items.length);
@@ -165,6 +183,14 @@ function render(){
     const body = c.items.length ? c.items.map(j => itemHtml(j, !c.done && j.pickup_date && j.pickup_date < today)).join('') : '<div class="empty">ไม่มีงาน</div>';
     return '<div class="cell"><div class="hd" style="--c:' + esc(c.color) + ';--t:' + tc.t + ';--cb:' + tc.b + '"><span>' + esc(c.name) + '</span><span class="cnt">' + c.items.length + '</span></div>' + body + '</div>';
   }).join('');
+  const doneIds = statuses.filter(s => s.name === DONE).map(s => s.id);
+  const cutoff = Date.now() - DONE_DAYS * 86400000;
+  const recent = q ? [] : jobs
+    .filter(j => doneIds.includes(j.status_id) && j.done_at && new Date(j.done_at).getTime() >= cutoff)
+    .sort((a, b) => new Date(b.done_at) - new Date(a.done_at));
+  $('doneBox').style.display = q ? 'none' : '';
+  $('doneSum').textContent = 'งานที่เสร็จแล้ว (' + DONE_DAYS + ' วันล่าสุด) · ' + recent.length + ' งาน';
+  $('doneList').innerHTML = recent.length ? recent.map(doneItemHtml).join('') : '<div class="empty">ยังไม่มีงานที่เสร็จในช่วงนี้</div>';
 }
 
 const STEPS = [0.85, 1, 1.15, 1.3, 1.5, 1.75];
@@ -185,7 +211,6 @@ $('theme').onclick = () => {
 $('fsm').onclick = () => setScale(-1);
 $('fsp').onclick = () => setScale(1);
 $('q').oninput = render;
-$('done').onchange = render;
 $('reload').onclick = load;
 $('print').onclick = () => window.print();
 themeLabel();
