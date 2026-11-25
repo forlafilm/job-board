@@ -35,6 +35,7 @@ td input,td select{width:100%}
 .login input{width:100%;margin-bottom:10px}
 .muted{color:var(--sub);font-size:13px}
 .tw{overflow-x:auto}
+details.card>summary{cursor:pointer;font-weight:500;font-size:15px}
 .tw table{min-width:720px}
 </style>
 </head>
@@ -76,9 +77,8 @@ td input,td select{width:100%}
   </div>
   <div class="card">
    <div class="row" style="margin-bottom:10px">
-    <input id="q" placeholder="ค้นหาชื่อ/เลข Job" style="flex:1;min-width:150px">
+    <input id="q" placeholder="ค้นหาชื่อ/เลข Job (รวมงานที่เสร็จแล้ว)" style="flex:1;min-width:150px">
     <select id="fs"></select>
-    <label class="muted row" style="gap:6px"><input type="checkbox" id="hideDone" checked style="height:auto"> ซ่อนงานที่เสร็จแล้ว</label>
    </div>
    <div class="tw"><table>
     <thead><tr><th style="width:22%">ชื่อ Job</th><th style="width:15%">เลข Job</th><th style="width:15%">วันที่เอาของ</th><th style="width:20%">สถานะ</th><th>หมายเหตุ</th><th style="width:120px"></th></tr></thead>
@@ -86,6 +86,14 @@ td input,td select{width:100%}
    </table></div>
    <p class="muted" id="jobCount"></p>
   </div>
+  <details class="card" id="doneBox">
+   <summary id="doneSum"></summary>
+   <p class="muted" id="doneNote" style="margin:8px 0"></p>
+   <div class="tw"><table>
+    <thead><tr><th style="width:22%">ชื่อ Job</th><th style="width:15%">เลข Job</th><th style="width:15%">วันที่เอาของ</th><th style="width:20%">สถานะ</th><th>หมายเหตุ</th><th style="width:120px"></th></tr></thead>
+    <tbody id="doneBody"></tbody>
+   </table></div>
+  </details>
  </div>
 
  <div id="tStatus" style="display:none">
@@ -171,41 +179,52 @@ function statusOpts(sel, withNone){
 }
 function renderFilters(){
   const cur = $('fs').value;
-  $('fs').innerHTML = '<option value="">ทุกสถานะ</option>' + statuses.map(s => '<option value="' + s.id + '">' + esc(s.name) + '</option>').join('');
+  $('fs').innerHTML = '<option value="">ทุกสถานะ</option>' + statuses.filter(s => s.name !== 'เสร็จแล้ว').map(s => '<option value="' + s.id + '">' + esc(s.name) + '</option>').join('');
   $('fs').value = cur;
   $('addStatus').innerHTML = statusOpts(statuses[0] && statuses[0].id, true);
 }
 
-function renderJobs(){
-  const q = $('q').value.trim().toLowerCase(), fs = $('fs').value, hide = $('hideDone').checked;
-  const doneIds = statuses.filter(s => s.name === 'เสร็จแล้ว').map(s => s.id);
-  const list = jobs.filter(j =>
-    (!fs || String(j.status_id) === fs) &&
-    (!hide || fs || q || !doneIds.includes(j.status_id)) &&
-    (!q || (j.name + ' ' + (j.job_no || '')).toLowerCase().includes(q)));
-  $('jobBody').innerHTML = list.map(j => '<tr data-id="' + j.id + '">' +
+const DONE_DAYS = 30;
+function rowHtml(j, isDone){
+  return '<tr data-id="' + j.id + '">' +
     '<td><input data-f="name" value="' + esc(j.name) + '"></td>' +
     '<td><input data-f="job_no" value="' + esc(j.job_no) + '"></td>' +
     '<td><input data-f="pickup_date" type="date" value="' + esc(j.pickup_date) + '"></td>' +
     '<td><select data-f="status_id">' + statusOpts(j.status_id, true) + '</select></td>' +
     '<td><input data-f="note" value="' + esc(j.note) + '"></td>' +
-    '<td style="white-space:nowrap">' + (doneIds.includes(j.status_id) ? '' : '<button class="ib ok" type="button" data-done="1" title="ทำเครื่องหมายว่างานเสร็จแล้ว">✓ เสร็จ</button>') + '<button class="ib" type="button" data-del="1" title="ลบ">ลบ</button></td></tr>').join('');
-  $('jobCount').textContent = 'แสดง ' + list.length + ' จาก ' + jobs.length + ' งาน';
+    '<td style="white-space:nowrap">' + (isDone ? '' : '<button class="ib ok" type="button" data-done="1" title="ทำเครื่องหมายว่างานเสร็จแล้ว">✓ เสร็จ</button>') + '<button class="ib" type="button" data-del="1" title="ลบ">ลบ</button></td></tr>';
 }
-$('q').oninput = renderJobs; $('fs').onchange = renderJobs; $('hideDone').onchange = renderJobs;
+function renderJobs(){
+  const q = $('q').value.trim().toLowerCase(), fs = $('fs').value;
+  const doneIds = statuses.filter(s => s.name === 'เสร็จแล้ว').map(s => s.id);
+  const match = j => !q || ((j.name || '') + ' ' + (j.job_no || '') + ' ' + (j.note || '')).toLowerCase().includes(q);
+  const open = jobs.filter(j => !doneIds.includes(j.status_id) && (!fs || String(j.status_id) === fs) && match(j));
+  const cutoff = Date.now() - DONE_DAYS * 86400000;
+  const done = jobs
+    .filter(j => doneIds.includes(j.status_id) && match(j) && (q || (j.done_at && new Date(j.done_at).getTime() >= cutoff)))
+    .sort((a, b) => (b.done_at || '').localeCompare(a.done_at || ''));
+  $('jobBody').innerHTML = open.map(j => rowHtml(j, false)).join('');
+  $('jobCount').textContent = 'แสดง ' + open.length + ' งานที่ยังไม่เสร็จ';
+  $('doneBody').innerHTML = done.map(j => rowHtml(j, true)).join('');
+  $('doneSum').textContent = q ? 'งานที่เสร็จแล้วที่ตรงกับคำค้น · ' + done.length + ' งาน' : 'งานที่เสร็จแล้ว (' + DONE_DAYS + ' วันล่าสุด) · ' + done.length + ' งาน';
+  $('doneNote').textContent = q ? 'ค้นหาจากงานที่เสร็จทั้งหมด' : 'งานที่เก่ากว่า ' + DONE_DAYS + ' วัน ค้นหาได้จากช่องค้นหาด้านบน เปลี่ยนสถานะเพื่อย้ายงานกลับมาที่บอร์ด';
+  if(q && done.length) $('doneBox').open = true;
+}
+$('q').oninput = renderJobs; $('fs').onchange = renderJobs;
 
-$('jobBody').addEventListener('change', async e => {
+$('tJobs').addEventListener('change', async e => {
   const el = e.target, tr = el.closest('tr'), f = el.dataset.f;
   if(!tr || !f) return;
   let v = el.value.trim();
   if(f === 'name' && !v){ toast('ชื่อ Job ห้ามว่าง', true); renderJobs(); return; }
   if(f === 'status_id') v = v ? +v : null; else if(f !== 'name') v = v || null;
-  const r = await db.from('jobs').update({[f]: v}).eq('id', +tr.dataset.id);
+  const r = await db.from('jobs').update({[f]: v}).eq('id', +tr.dataset.id).select().single();
   if(r.error){ toast('บันทึกไม่สำเร็จ: ' + r.error.message, true); return; }
-  const j = jobs.find(x => x.id === +tr.dataset.id); if(j) j[f] = v;
+  const j = jobs.find(x => x.id === +tr.dataset.id); if(j) Object.assign(j, r.data);
+  if(f === 'status_id') renderJobs();
   toast('บันทึกแล้ว');
 });
-$('jobBody').addEventListener('click', async e => {
+$('tJobs').addEventListener('click', async e => {
   const d = e.target.closest('[data-done]');
   if(!d) return;
   const j = jobs.find(x => x.id === +d.closest('tr').dataset.id);
@@ -216,11 +235,11 @@ $('jobBody').addEventListener('click', async e => {
     if(c.error){ toast('สร้างสถานะ "เสร็จแล้ว" ไม่สำเร็จ: ' + c.error.message, true); return; }
     ds = c.data; statuses.push(ds); renderFilters();
   }
-  const r = await db.from('jobs').update({status_id: ds.id}).eq('id', j.id);
+  const r = await db.from('jobs').update({status_id: ds.id}).eq('id', j.id).select().single();
   if(r.error){ toast('บันทึกไม่สำเร็จ: ' + r.error.message, true); return; }
-  j.status_id = ds.id; renderJobs(); toast('ทำเครื่องหมายเสร็จแล้ว: ' + j.name);
+  Object.assign(j, r.data); renderJobs(); toast('ทำเครื่องหมายเสร็จแล้ว: ' + j.name);
 });
-$('jobBody').addEventListener('click', async e => {
+$('tJobs').addEventListener('click', async e => {
   const b = e.target.closest('[data-del]'); if(!b) return;
   const tr = b.closest('tr'), j = jobs.find(x => x.id === +tr.dataset.id);
   if(!confirm('ลบ Job "' + j.name + (j.job_no ? ' ' + j.job_no : '') + '" ใช่ไหม? (ประวัติยังเก็บไว้)')) return;
